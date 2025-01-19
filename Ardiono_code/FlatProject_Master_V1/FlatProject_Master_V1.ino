@@ -1,9 +1,9 @@
 #include <EasyTransfer.h>
-
+#include <SoftwareSerial.h>
 
 #define RS485ControlPin 2
 EasyTransfer ETin, ETout;
-
+SoftwareSerial Serial_rs485(10, 11);  //RX,TX
 // Structure for sending data
 struct DataPacket {
   int slaveID;           // Target slave ID
@@ -19,8 +19,8 @@ struct FeedbackPacket {
 };
 FeedbackPacket dataFromSlave;
 
-const int TIMEOUT = 500; // Timeout for response in milliseconds
-const int NUM_SLAVES = 2; // Total number of slaves
+const int TIMEOUT = 5000; // Timeout for response in milliseconds
+const int NUM_SLAVES = 1; // Total number of slaves
 const int MAX_RETRIES = 5;    // Maximum number of retries for a slave
 
 int currentSlave = 1;    // Start with Slave 1
@@ -29,11 +29,11 @@ bool slaveStates[NUM_SLAVES]; // Array to track operational state of slaves (tru
 
 void setup() {
   Serial.begin(9600); // Debugging
-  Serial1.begin(9600); // RS485 connection
+  Serial_rs485.begin(9600); // RS485 connection
   pinMode(RS485ControlPin, OUTPUT);
   digitalWrite(RS485ControlPin, LOW); // Set to receive mode
-  ETin.begin(details(dataFromSlave), &Serial1);
-  ETout.begin(details(dataToSlave), &Serial1);
+  ETin.begin(details(dataFromSlave), &Serial_rs485);
+  ETout.begin(details(dataToSlave), &Serial_rs485);
 
   // Initialize all slaves as operational
   for (int i = 0; i < NUM_SLAVES; i++) {
@@ -45,8 +45,9 @@ void sendCommand(int slaveID, const char* command) {
   dataToSlave.slaveID = slaveID;
   strncpy(dataToSlave.command, command, sizeof(dataToSlave.command));
   digitalWrite(RS485ControlPin, HIGH); // Set to transmit mode
-  delay(1); // Ensure proper control line switching
+  delay(10); // Ensure proper control line switching
   ETout.sendData();
+  delay(10); // Ensure proper control line switching
   digitalWrite(RS485ControlPin, LOW); // Back to receive mode
   Serial.print("Sent command to Slave ");
   Serial.println(slaveID);
@@ -54,8 +55,11 @@ void sendCommand(int slaveID, const char* command) {
 
 bool receiveFeedback(int expectedSlaveID) {
   unsigned long startTime = millis();
+  bool receive = true;
   while (millis() - startTime < TIMEOUT) {
+  //while (receive) {
     if (ETin.receiveData()) {
+      Serial.print(dataFromSlave.slaveID);
       if (dataFromSlave.slaveID == expectedSlaveID) { // Validate response is from the correct slave
         Serial.print("Response from Slave ");
         Serial.println(dataFromSlave.slaveID);
@@ -63,6 +67,7 @@ bool receiveFeedback(int expectedSlaveID) {
         Serial.println(dataFromSlave.temperature);
         Serial.print("Humidity: ");
         Serial.println(dataFromSlave.humidity);
+        receive =false;
         return true;
       } else {
         Serial.println("Response from unexpected slave.");
@@ -119,5 +124,5 @@ void loop() {
     currentSlave = 1; // Loop back to the first slave
   }
 
-  delay(1000); // Wait before polling the next slave
+  delay(3000); // Wait before polling the next slave
 }
